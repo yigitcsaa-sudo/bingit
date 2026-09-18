@@ -532,7 +532,7 @@
       <div class="foot-col">
         <h4>İletişim</h4>
         <a href="#">Antalya, Türkiye</a>
-        <a href="#">destek@aktarma.example</a>
+        <a href="mailto:bingit.destek@gmail.com">bingit.destek@gmail.com</a>
       </div>
     </div>
     <div class="foot-bottom">
@@ -577,9 +577,18 @@
 
     <!-- FORGOT PASSWORD FORM -->
     <form id="forgotForm" class="hidden" onsubmit="return handleForgotPassword(event)">
-      <p class="sub" style="margin-top:-6px;">Hesabına kayıtlı e-postayı gir, sana bir şifre sıfırlama bağlantısı gönderelim.</p>
+      <p class="sub" style="margin-top:-6px;">Hesabına kayıtlı e-postayı gir, sana 6 haneli bir kod gönderelim.</p>
       <div class="field"><label>E-posta</label><input type="email" required id="forgot-email" placeholder="ornek@eposta.com"></div>
-      <button class="btn btn-dark btn-block" type="submit">Sıfırlama Bağlantısı Gönder</button>
+      <button class="btn btn-dark btn-block" type="submit">Kod Gönder</button>
+      <p class="form-note"><a href="#" onclick="setAuthTab('login');return false;" style="color:var(--sign);font-weight:600;">← Girişe dön</a></p>
+    </form>
+
+    <!-- RESET WITH CODE FORM -->
+    <form id="resetCodeForm" class="hidden" onsubmit="return handleResetWithCode(event)">
+      <p class="sub" style="margin-top:-6px;">E-postana gelen 6 haneli kodu ve yeni şifreni gir.</p>
+      <div class="field"><label>6 Haneli Kod</label><input required id="reset-code" placeholder="123456" inputmode="numeric" maxlength="6"></div>
+      <div class="field"><label>Yeni Şifre</label><input type="password" required minlength="6" id="reset-code-password" placeholder="En az 6 karakter"></div>
+      <button class="btn btn-dark btn-block" type="submit">Şifreyi Güncelle</button>
       <p class="form-note"><a href="#" onclick="setAuthTab('login');return false;" style="color:var(--sign);font-weight:600;">← Girişe dön</a></p>
     </form>
 
@@ -614,22 +623,6 @@
   </div>
 </div>
 <!-- ============ /AUTH MODAL ============ -->
-
-<!-- ============ RESET PASSWORD MODAL ============ -->
-<div class="overlay" id="resetOverlay">
-  <div class="modal">
-    <button class="modal-close" onclick="document.getElementById('resetOverlay').classList.remove('show')">✕</button>
-    <h3>Yeni Şifre Belirle</h3>
-    <p class="sub">Hesabın için yeni bir şifre gir.</p>
-    <div class="form-error" id="resetError"></div>
-    <form onsubmit="return handleSetNewPassword(event)">
-      <div class="field"><label>Yeni Şifre</label><input type="password" required minlength="6" id="reset-password" placeholder="En az 6 karakter"></div>
-      <div class="field"><label>Yeni Şifre (Tekrar)</label><input type="password" required minlength="6" id="reset-password-confirm" placeholder="En az 6 karakter"></div>
-      <button class="btn btn-dark btn-block" type="submit">Şifreyi Güncelle</button>
-    </form>
-  </div>
-</div>
-<!-- ============ /RESET PASSWORD MODAL ============ -->
 
 
 <!-- ============ CUSTOMER DASHBOARD ============ -->
@@ -941,6 +934,7 @@ function setAuthTab(tab){
   document.getElementById('tab-register').classList.toggle('active', tab==='register');
   document.getElementById('loginForm').classList.toggle('hidden', tab!=='login' && authMode!=='admin');
   document.getElementById('forgotForm').classList.add('hidden');
+  document.getElementById('resetCodeForm').classList.add('hidden');
   document.getElementById('registerCustomerForm').classList.add('hidden');
   document.getElementById('registerFirmForm').classList.add('hidden');
   if(tab==='register' && authMode!=='admin'){
@@ -965,12 +959,15 @@ function showForgotForm(){
   clearAuthError();
   document.querySelector('.modal-tabs').style.display = 'none';
   document.getElementById('loginForm').classList.add('hidden');
+  document.getElementById('resetCodeForm').classList.add('hidden');
   document.getElementById('registerCustomerForm').classList.add('hidden');
   document.getElementById('registerFirmForm').classList.add('hidden');
   document.getElementById('forgotForm').classList.remove('hidden');
   document.getElementById('authTitle').textContent = 'Şifremi Unuttum';
-  document.getElementById('authSub').textContent = 'Sana bir sıfırlama bağlantısı gönderelim.';
+  document.getElementById('authSub').textContent = 'Sana 6 haneli bir kod gönderelim.';
 }
+
+let resetEmailPending = '';
 
 async function handleForgotPassword(e){
   e.preventDefault();
@@ -978,13 +975,41 @@ async function handleForgotPassword(e){
   const email = document.getElementById('forgot-email').value;
   const btn = e.target.querySelector('button[type=submit]');
   btn.disabled = true; btn.textContent = 'Gönderiliyor...';
-  const { error } = await sb.auth.resetPasswordForEmail(email, {
-    redirectTo: window.location.origin + window.location.pathname + '#sifre-sifirla'
-  });
-  btn.disabled = false; btn.textContent = 'Sıfırlama Bağlantısı Gönder';
+  const { error } = await sb.auth.resetPasswordForEmail(email);
+  btn.disabled = false; btn.textContent = 'Kod Gönder';
   if(error){ showAuthError(error.message); return false; }
+  resetEmailPending = email;
+  document.querySelector('.modal-tabs').style.display = 'none';
+  document.getElementById('forgotForm').classList.add('hidden');
+  document.getElementById('resetCodeForm').classList.remove('hidden');
+  document.getElementById('authTitle').textContent = 'Kodu Gir';
+  document.getElementById('authSub').textContent = email + ' adresine gönderdiğimiz 6 haneli kodu gir.';
+  toast('E-postana 6 haneli bir kod gönderdik.');
+  return false;
+}
+
+async function handleResetWithCode(e){
+  e.preventDefault();
+  clearAuthError();
+  const code = document.getElementById('reset-code').value.trim();
+  const newPassword = document.getElementById('reset-code-password').value;
+  const btn = e.target.querySelector('button[type=submit]');
+  btn.disabled = true; btn.textContent = 'Doğrulanıyor...';
+
+  const { data, error } = await sb.auth.verifyOtp({ email: resetEmailPending, token: code, type: 'recovery' });
+  if(error){
+    btn.disabled = false; btn.textContent = 'Şifreyi Güncelle';
+    showAuthError('Kod hatalı ya da süresi dolmuş: ' + error.message);
+    return false;
+  }
+
+  const { error: updateError } = await sb.auth.updateUser({ password: newPassword });
+  btn.disabled = false; btn.textContent = 'Şifreyi Güncelle';
+  if(updateError){ showAuthError(updateError.message); return false; }
+
   closeAuth();
-  toast('E-postana bir sıfırlama bağlantısı gönderdik. Gelen kutunu kontrol et.');
+  toast('Şifren güncellendi! Şimdi yeni şifrenle giriş yapabilirsin.');
+  await sb.auth.signOut();
   return false;
 }
 
@@ -1057,6 +1082,10 @@ async function handleRegisterCustomer(e){
   });
   btn.disabled = false; btn.textContent = 'Müşteri Hesabı Oluştur';
   if(error){ showAuthError(error.message); return false; }
+  if(data.user && data.user.identities && data.user.identities.length === 0){
+    showAuthError('Bu e-posta zaten kayıtlı. Giriş yapmayı dene ya da "Şifremi unuttum" ile şifreni sıfırla.');
+    return false;
+  }
   if(!data.session){
     closeAuth();
     toast('Kayıt başarılı! E-postana gelen onay linkine tıkladıktan sonra giriş yapabilirsin.');
@@ -1085,6 +1114,10 @@ async function handleRegisterFirm(e){
   });
   btn.disabled = false; btn.textContent = 'Firma Hesabı Oluştur';
   if(error){ showAuthError(error.message); return false; }
+  if(data.user && data.user.identities && data.user.identities.length === 0){
+    showAuthError('Bu e-posta zaten kayıtlı. Giriş yapmayı dene ya da "Şifremi unuttum" ile şifreni sıfırla.');
+    return false;
+  }
   if(!data.session){
     closeAuth();
     toast('Kayıt başarılı! E-postana gelen onay linkine tıkladıktan sonra giriş yapabilirsin.');
@@ -1130,54 +1163,8 @@ async function logout(which){
   window.scrollTo(0,0);
 }
 
-/* ---------------- Şifre sıfırlama (e-postadaki linkten gelindiğinde) ---------------- */
-const __urlParams = new URLSearchParams(window.location.search);
-let isPasswordRecovery = window.location.hash.includes('type=recovery')
-  || window.location.hash.includes('access_token')
-  || __urlParams.get('type') === 'recovery'
-  || __urlParams.has('code');
-
-if(isPasswordRecovery){
-  document.getElementById('resetOverlay').classList.add('show');
-}
-
-sb.auth.onAuthStateChange((event) => {
-  if(event === 'PASSWORD_RECOVERY'){
-    isPasswordRecovery = true;
-    document.getElementById('resetOverlay').classList.add('show');
-  }
-});
-
-async function handleSetNewPassword(e){
-  e.preventDefault();
-  const p1 = document.getElementById('reset-password').value;
-  const p2 = document.getElementById('reset-password-confirm').value;
-  const errEl = document.getElementById('resetError');
-  errEl.classList.remove('show');
-  if(p1 !== p2){ errEl.textContent = 'Şifreler eşleşmiyor.'; errEl.classList.add('show'); return false; }
-  const btn = e.target.querySelector('button[type=submit]');
-  btn.disabled = true; btn.textContent = 'Güncelleniyor...';
-
-  let { data: sessionData } = await sb.auth.getSession();
-  if(!sessionData.session){
-    // Bağlantı sayfaya yeni geldiği için oturum henüz kurulmamış olabilir, kısa bir süre bekleyip tekrar dene
-    await new Promise(r => setTimeout(r, 1200));
-  }
-
-  const { error } = await sb.auth.updateUser({ password: p1 });
-  btn.disabled = false; btn.textContent = 'Şifreyi Güncelle';
-  if(error){ errEl.textContent = error.message + ' — sorun devam ederse e-postadaki linke tekrar tıklamayı dene.'; errEl.classList.add('show'); return false; }
-  document.getElementById('resetOverlay').classList.remove('show');
-  toast('Şifren güncellendi. Şimdi yeni şifrenle giriş yapabilirsin.');
-  isPasswordRecovery = false;
-  await sb.auth.signOut();
-  history.replaceState(null, '', window.location.pathname);
-  return false;
-}
-
 /* ---------------- Sayfa yenilendiğinde oturumu koru ---------------- */
 (async function checkSession(){
-  if(isPasswordRecovery) return;
   const { data: { session } } = await sb.auth.getSession();
   if(session && session.user){
     await loadProfileAndEnter(session.user);
